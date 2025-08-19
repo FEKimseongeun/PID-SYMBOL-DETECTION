@@ -1,0 +1,29 @@
+# --- 경로 설정 ---
+model_path: "data/models/faster_rcnn_pid_model_01.pth"
+output_dir: "output"
+
+# input_pdf_path는 제거 - 사용자 업로드로 동적 설정
+
+# --- 탐지 및 필터링 설정 ---
+# 사용자가 웹에서 설정할 값들 (기본값)
+target_labels: [27, 28,29]  # 기본값
+
+# 클래스 ID와 실제 이름을 매핑
+class_names: [
+  "background", "1", "2", "3", "4", "5",
+  "6", "7", "8", "9", "10",
+  "11", "12", "13", "14", "15",
+  "16", "17", "18", "19", "20",
+  "21", "22", "23", "24", "25",
+  "26", "27", "28", "29", "30",
+  "31", "32"
+]
+
+# --- 좌표 기반 텍스트 추출 설정 ---
+# 기본값들 (웹에서 동적으로 변경 가능)
+reference_text: "DWG. NO."
+reference_page: 0
+
+# --- 처리 임계값 설정 ---
+detection_confidence_threshold: 0.5
+pdf_render_dpi: 150

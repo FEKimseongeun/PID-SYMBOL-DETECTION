@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P&ID 심볼 자동 분석 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass { backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .upload-zone { background: linear-gradient(45deg, #f0f9ff, #e0f2fe); border: 2px dashed #0ea5e9; transition: all 0.3s ease; }
+        .upload-zone:hover { background: linear-gradient(45deg, #e0f2fe, #bae6fd); border-color: #0284c7; transform: translateY(-2px); }
+        .progress-bar { background: linear-gradient(90deg, #10b981, #34d399); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl md:text-6xl font-bold text-white mb-4">P&ID 심볼 분석기</h1>
+            <p class="text-xl text-blue-100">AI 기반 자동 심볼 탐지 및 데이터 추출</p>
+        </div>
+        <div class="max-w-4xl mx-auto glass rounded-3xl p-8 shadow-2xl">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
+                    <span class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center mr-3"><span class="text-white font-bold">1</span></span>분석 설정
+                </h2>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-white font-medium mb-2">탐지할 심볼 클래스</label>
+                            <input type="text" id="targetLabels" placeholder="예: 26,27,31" value="26,27,28,29,31" class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50">
+                            <p class="text-sm text-blue-200 mt-1">쉼표로 구분하여 입력</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                         <div>
+                            <label class="block text-white font-medium mb-2">기준 텍스트</label>
+                            <input type="text" id="referenceText" value="DWG. NO." class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50">
+                        </div>
+                        <div>
+                            <label class="block text-white font-medium mb-2">기준 페이지</label>
+                            <input type="number" id="referencePage" value="0" min="0" class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50">
+                             <p class="text-sm text-blue-200 mt-1">0부터 시작 (첫 페이지 = 0)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
+                    <span class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mr-3"><span class="text-white font-bold">2</span></span>PDF 파일 업로드
+                </h2>
+                <div class="upload-zone rounded-2xl p-8 text-center cursor-pointer" id="uploadZone">
+                    <input type="file" id="pdfFile" accept=".pdf" class="hidden">
+                    <div id="uploadContent">
+                        <div class="text-6xl mb-4">📄</div>
+                        <h3 class="text-xl font-semibold text-blue-700 mb-2">PDF 파일을 선택하세요</h3>
+                        <p class="text-blue-600">클릭하거나 파일을 드래그하여 업로드</p>
+                    </div>
+                    <div id="fileInfo" class="hidden">
+                        <div class="text-4xl mb-2">✅</div>
+                        <p class="text-green-600 font-semibold" id="fileName"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mb-8">
+                <button id="analyzeBtn" class="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 px-12 rounded-2xl text-xl hover:from-purple-700 hover:to-pink-700 transform hover:scale-105 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <span id="btnText">🚀 분석 시작</span>
+                </button>
+            </div>
+
+            <div id="progressSection" class="hidden mb-8">
+                <h3 class="text-xl font-bold text-white mb-4">분석 진행 상황</h3>
+                <div class="bg-white/20 rounded-lg p-4">
+                    <div class="flex justify-between text-white mb-2">
+                        <span id="progressText">준비 중...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="bg-white/30 rounded-full h-3">
+                        <div class="progress-bar h-full rounded-full transition-all duration-500" id="progressBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="resultSection" class="hidden">
+                <h3 class="text-2xl font-bold text-white mb-6 flex items-center">
+                    <span class="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center mr-3"><span>📊</span></span>분석 결과
+                </h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white/10 rounded-xl p-6">
+                        <h4 class="text-lg font-bold text-white mb-4">📥 다운로드</h4>
+                        <div class="space-y-3">
+                            <button id="downloadExcel" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">📊 Excel 결과 다운로드</button>
+                            <button id="downloadImages" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">🖼️ 분석 이미지 다운로드</button>
+                        </div>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-6">
+                        <h4 class="text-lg font-bold text-white mb-4">📈 통계</h4>
+                        <div id="resultStats" class="text-white space-y-2">
+                            <div class="flex justify-between"><span>처리된 페이지:</span><span id="totalPages">0</span></div>
+                            <div class="flex justify-between"><span>탐지된 심볼:</span><span id="totalSymbols">0</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let uploadedFileId = null;
+            let currentJobId = null;
+            let statusCheckInterval = null;
+            const API_BASE = '/api';
+
+            const uploadZone = document.getElementById('uploadZone');
+            const pdfFile = document.getElementById('pdfFile');
+            const uploadContent = document.getElementById('uploadContent');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const progressSection = document.getElementById('progressSection');
+            const resultSection = document.getElementById('resultSection');
+
+            uploadZone.addEventListener('click', () => pdfFile.click());
+            uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.backgroundColor = '#bae6fd'; });
+            uploadZone.addEventListener('dragleave', () => { uploadZone.style.backgroundColor = ''; });
+            uploadZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadZone.style.backgroundColor = '';
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].type === 'application/pdf') { handleFileUpload(files[0]); }
+            });
+            pdfFile.addEventListener('change', (e) => { if (e.target.files.length > 0) { handleFileUpload(e.target.files[0]); } });
+
+            async function handleFileUpload(file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+                    if (!response.ok) throw new Error('파일 업로드 실패');
+                    const result = await response.json();
+                    uploadedFileId = result.fileId;
+                    uploadContent.classList.add('hidden');
+                    fileInfo.classList.remove('hidden');
+                    fileName.textContent = file.name;
+                    analyzeBtn.disabled = false;
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('파일 업로드 중 오류가 발생했습니다.');
+                }
+            }
+
+            analyzeBtn.addEventListener('click', startAnalysis);
+
+            async function startAnalysis() {
+                if (!uploadedFileId) return;
+                const targetLabelsStr = document.getElementById('targetLabels').value;
+                const targetLabels = targetLabelsStr.split(',').map(x => x.trim()).filter(Boolean);
+                if (targetLabels.length === 0) { alert('탐지할 심볼 클래스를 입력해주세요.'); return; }
+
+                const settings = {
+                    targetLabels,
+                    referenceText: document.getElementById('referenceText').value,
+                    referencePage: parseInt(document.getElementById('referencePage').value),
+                };
+
+                try {
+                    analyzeBtn.disabled = true;
+                    document.getElementById('btnText').innerHTML = '⏳ 분석 중...';
+                    progressSection.classList.remove('hidden');
+                    resultSection.classList.add('hidden');
+
+                    const response = await fetch(`${API_BASE}/analyze`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileId: uploadedFileId, settings: settings })
+                    });
+                    if (!response.ok) throw new Error('분석 시작 실패');
+                    const result = await response.json();
+                    currentJobId = result.jobId;
+                    statusCheckInterval = setInterval(checkAnalysisStatus, 2000);
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                    alert('분석 시작 중 오류가 발생했습니다.');
+                    resetUI();
+                }
+            }
+
+            async function checkAnalysisStatus() {
+                 if (!currentJobId) return;
+                try {
+                    const response = await fetch(`${API_BASE}/status/${currentJobId}`);
+                    if (!response.ok) throw new Error('상태 확인 실패');
+                    const status = await response.json();
+
+                    document.getElementById('progressText').textContent = status.message;
+                    document.getElementById('progressPercent').textContent = status.progress + '%';
+                    document.getElementById('progressBar').style.width = status.progress + '%';
+
+                    if (status.status === 'completed') {
+                        clearInterval(statusCheckInterval);
+                        showResults(status.results);
+                    } else if (status.status === 'error') {
+                        clearInterval(statusCheckInterval);
+                        alert('분석 중 오류 발생: ' + status.error);
+                        resetUI();
+                    }
+                } catch (error) {
+                    console.error('Status check error:', error);
+                    clearInterval(statusCheckInterval);
+                    alert('상태 확인 중 연결 오류가 발생했습니다.');
+                    resetUI();
+                }
+            }
+
+            function showResults(results) {
+                resetUI();
+                progressSection.classList.add('hidden');
+                resultSection.classList.remove('hidden');
+
+                document.getElementById('totalPages').textContent = results.totalPages;
+                document.getElementById('totalSymbols').textContent = results.totalSymbols;
+            }
+
+            function resetUI() {
+                analyzeBtn.disabled = false;
+                document.getElementById('btnText').innerHTML = '🚀 분석 시작';
+            }
+
+            document.getElementById('downloadExcel').addEventListener('click', () => downloadFile('excel', 'pid_analysis_result.xlsx'));
+            document.getElementById('downloadImages').addEventListener('click', () => downloadFile('images', 'annotated_images.zip'));
+
+            async function downloadFile(type, defaultName) {
+                if (!currentJobId) return;
+                try {
+                    const response = await fetch(`${API_BASE}/download/${type}/${currentJobId}`);
+                    if (!response.ok) throw new Error('다운로드 실패');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = defaultName;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } catch (error) {
+                    console.error('Download error:', error);
+                    alert('파일 다운로드 중 오류가 발생했습니다.');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

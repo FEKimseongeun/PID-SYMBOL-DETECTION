@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+
+# PyCharm
+.idea/
+*.iml
+
+# etc
+.DS_Store
+temp_uploads
+temp_results
+test
+/data
+/test
+/temp_results
+/temp_uploads
