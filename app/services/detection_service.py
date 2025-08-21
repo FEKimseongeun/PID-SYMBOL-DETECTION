@@ -8,6 +8,7 @@ import numpy as np
 import multiprocessing
 from tqdm import tqdm
 from typing import List, Tuple
+import time # ✨ 시간 측정을 위해 time 모듈 import
 
 # 서비스 및 헬퍼 함수들을 명시적으로 import
 from .pdf_service import convert_pdf_to_images
@@ -97,15 +98,19 @@ def init_worker(model_path, device_str):
     print(f"프로세스 {os.getpid()}: 모델 로드 완료.")
 
 
-def process_single_image(args):
+def process_single_image(args, model, device):
     image_path, config, output_dir, tile_size, overlap, iou_thresh, conf_thresh, target_label_ids = args
-    global worker_model, worker_device
+    # global worker_model, worker_device # ✨ 더 이상 전역 변수를 사용하지 않으므로 삭제
+
     annotated_images_dir = os.path.join(output_dir, "2_annotated_images")
     full_image = cv2.imread(image_path)
     if full_image is None: return f"이미지 로드 실패: {image_path}"
+
     h, w, _ = full_image.shape
     tiles_coords = sliding_window_coords(h, w, tile_size, overlap)
-    raw_detections = detect_objects_in_tiles(worker_model, full_image, tiles_coords, worker_device, conf_thresh)
+
+    # ✨ 전역 모델 대신 전달받은 모델과 디바이스 사용
+    raw_detections = detect_objects_in_tiles(model, full_image, tiles_coords, device, conf_thresh)
     if not raw_detections: return f"객체 미탐지: {os.path.basename(image_path)}"
     target_detections = [d for d in raw_detections if d[5] in target_label_ids]
     if not target_detections: return f"타겟 객체 미탐지: {os.path.basename(image_path)}"
@@ -121,47 +126,55 @@ def process_single_image(args):
 
 # --- 메인 파이프라인 함수 ---
 
-def run_analysis_pipeline(job_id, pdf_path, settings, output_dir, update_job_status_func, config_path="config/config.yaml"):
+def run_analysis_pipeline(job_id, pdf_path, settings, output_dir, update_job_status_func,
+                          config_path="config/config.yaml"):
+    total_start_time = time.time()  # 전체 시작 시간 기록
+
     config = load_config(config_path)
     class_names = config.get('class_names', [])
-    # targetLabels는 여전히 사용자 설정에 따라 받습니다.
     target_label_ids = {class_names.index(label) for label in settings['targetLabels'] if label in class_names}
 
+    # --- 단계 1: PDF 변환 ---
+    step1_start_time = time.time()
     update_job_status_func(job_id, 'running', 10, 'PDF를 이미지로 변환 중...')
     source_images_dir = os.path.join(output_dir, "1_source_images")
     image_paths = convert_pdf_to_images(pdf_path, source_images_dir, config.get('pdf_render_dpi', 300))
+    print(f"⏱️  PDF 변환 완료. 소요 시간: {time.time() - step1_start_time:.2f}초")
 
+    # --- 단계 2: 객체 탐지 (병렬 처리 제거) ---
+    step2_start_time = time.time()
     update_job_status_func(job_id, 'running', 30, f'{len(image_paths)}개 페이지에 대한 객체 탐지 시작...')
-    device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # --- ✨ [수정] 파라미터를 고정된 값으로 하드코딩 ---
+    # ✨ 모델을 여기서 딱 한 번만 로드합니다.
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_str)
+    model = load_model(config['model_path'], device)
+    print(f"🧠 모델 로드 완료. ({device_str} 사용)")
+
     TILE_SIZE = 1024
     OVERLAP = 200
     IOU_THRESHOLD = 0.5
     CONFIDENCE_THRESHOLD = 0.4
 
-    task_args = [(
-        image_path, config, output_dir,
-        TILE_SIZE,
-        OVERLAP,
-        IOU_THRESHOLD,
-        CONFIDENCE_THRESHOLD,
-        target_label_ids
-    ) for image_path in image_paths]
-    # -----------------------------------------------
+    task_args = [(path, config, output_dir, TILE_SIZE, OVERLAP, IOU_THRESHOLD, CONFIDENCE_THRESHOLD, target_label_ids)
+                 for path in image_paths]
 
-    num_processes = min(os.cpu_count(), 8)
-    with multiprocessing.Pool(processes=num_processes, initializer=init_worker,
-                              initargs=(config['model_path'], device_str)) as pool:
-        for i, result in enumerate(pool.imap_unordered(process_single_image, task_args)):
-            progress = 30 + int(60 * (i + 1) / len(image_paths))
-            update_job_status_func(job_id, 'running', progress, f'페이지 처리 중... {result}')
+    # ✨ 병렬 처리 Pool 대신 간단한 for 반복문으로 변경!
+    print("➡️  순차적 이미지 처리 시작...")
+    for i, args in enumerate(task_args):
+        # ✨ 수정된 함수 호출 방식
+        result_msg = process_single_image(args, model, device)
+        progress = 30 + int(60 * (i + 1) / len(image_paths))
+        update_job_status_func(job_id, 'running', progress, f'페이지 처리 중 ({i + 1}/{len(image_paths)})...')
+        print(f"    - {result_msg}")
+    print(f"⏱️  모든 이미지 객체 탐지 완료. 소요 시간: {time.time() - step2_start_time:.2f}초")
 
+    # --- 단계 3: OCR 및 엑셀 추출 ---
+    step3_start_time = time.time()
     update_job_status_func(job_id, 'running', 90, '객체 탐지 완료, OCR 및 엑셀 추출 시작...')
     cropped_dir = os.path.join(output_dir, "3_cropped_objects")
     excel_path = os.path.join(output_dir, "ocr_and_detection_results.xlsx")
 
-    # --- ✨ [수정] OCR 함수 호출 시 필요한 파라미터 추가 ---
     perform_ocr_on_crops_and_export(
         cropped_images_dir=cropped_dir,
         output_excel_path=excel_path,
@@ -169,16 +182,16 @@ def run_analysis_pipeline(job_id, pdf_path, settings, output_dir, update_job_sta
         reference_text=settings['referenceText'],
         reference_page=settings['referencePage']
     )
+    print(f"⏱️  OCR 및 엑셀 저장 완료. 소요 시간: {time.time() - step3_start_time:.2f}초")
 
     annotated_dir = os.path.join(output_dir, '2_annotated_images')
-
-    # ✨ [개선] 최종 결과에 통계 정보 추가
     total_symbols = len(os.listdir(cropped_dir)) if os.path.exists(cropped_dir) else 0
 
+    print(f"\n✨ 총 소요 시간: {time.time() - total_start_time:.2f}초")
     return {
         'success': True,
         'total_pages': len(image_paths),
-        'total_symbols': total_symbols,  # 통계 정보 추가
+        'total_symbols': total_symbols,
         'excel_path': excel_path,
         'annotated_images_dir': annotated_dir
     }

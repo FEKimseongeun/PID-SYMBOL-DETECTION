@@ -1,14 +1,11 @@
+# config/config.yaml
+
 # --- 경로 설정 ---
 model_path: "data/models/faster_rcnn_pid_model_01.pth"
 output_dir: "output"
 
-# input_pdf_path는 제거 - 사용자 업로드로 동적 설정
-
-# --- 탐지 및 필터링 설정 ---
-# 사용자가 웹에서 설정할 값들 (기본값)
-target_labels: [27, 28,29]  # 기본값
-
-# 클래스 ID와 실제 이름을 매핑
+# --- 클래스 매핑 ---
+# 모델이 학습한 클래스 이름 목록입니다. 0번은 보통 배경(background)입니다.
 class_names: [
   "background", "1", "2", "3", "4", "5",
   "6", "7", "8", "9", "10",
@@ -20,10 +17,16 @@ class_names: [
 ]
 
 # --- 좌표 기반 텍스트 추출 설정 ---
-# 기본값들 (웹에서 동적으로 변경 가능)
+# 이 값들은 웹 UI 등에서 사용자가 동적으로 설정할 수 있는 기본값입니다.
 reference_text: "DWG. NO."
 reference_page: 0
 
-# --- 처리 임계값 설정 ---
-detection_confidence_threshold: 0.5
+# --- 처리 파라미터 및 임계값 ---
+# 탐지 설정
+#detection_confidence_threshold: 0.4
+#iou_threshold: 0.5
+#tile_size: 1024
+#tile_overlap: 200
+
+# PDF 렌더링 설정
 pdf_render_dpi: 150
