@@ -15,7 +15,7 @@ venv/
 temp_uploads
 temp_results
 test
-/data
+/data/models
 /test
 /temp_results
 /temp_uploads
