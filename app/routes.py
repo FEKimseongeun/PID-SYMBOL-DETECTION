@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import (
     Blueprint, request, jsonify, send_file, render_template, current_app
 )
+from werkzeug.utils import secure_filename
 
 # detection_service에서 메인 파이프라인 함수를 import
 from .services.detection_service import run_analysis_pipeline
@@ -40,7 +41,12 @@ def analyze_pdf_background(app, job_id, pdf_path, settings):
                 with zipfile.ZipFile(zip_path, 'w') as zipf:
                     for root, _, files in os.walk(result['annotated_images_dir']):
                         for file in files: zipf.write(os.path.join(root, file), file)
-                final_results = {'excelPath': result['excel_path'], 'zipPath': zip_path}
+                final_results = {
+                    'excelPath': result['excel_path'],
+                    'zipPath': zip_path,
+                    'totalPages': result['total_pages'],  # 추가
+                    'totalSymbols': result['total_symbols']  # 추가
+                }
                 update_job_status(job_id, 'completed', 100, '분석 완료!', results=final_results)
             else:
                 raise Exception("PDF 분석 실패")
